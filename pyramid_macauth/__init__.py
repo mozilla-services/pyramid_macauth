@@ -267,6 +267,12 @@ class MACAuthenticationPolicy(object):
         supplied signing key.  If missing or invalid then HTTPUnauthorized
         is raised.
         """
+        # See if we've already checked the signature on this request.
+        # This is important because pyramid doesn't cache the results
+        # of authenticating the request, but we mark the nonce as stale
+        # after the first check.
+        if request.environ.get("macauth.signature_is_valid", False):
+            return True
         # Grab the (hopefully cached) params from the request.
         params = self._get_params(request)
         if params is None:
@@ -278,6 +284,9 @@ class MACAuthenticationPolicy(object):
         if not sig_valid:
             msg = "invalid MAC signature"
             raise self.challenge(request, msg)
+        # Mark this request as having a valid signature.
+        request.environ["macauth.signature_is_valid"] = True
+        return True
 
 
 def _load_function_from_settings(name, settings):

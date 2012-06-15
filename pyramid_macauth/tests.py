@@ -357,3 +357,8 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
         policy = MACAuthenticationPolicy()
         req = self._make_request("/auth")
         self.assertEquals(policy.find_groups("test", req), [])
+
+    def test_auth_can_be_checked_several_times_on_same_request(self):
+        req = self._make_signed_request("test@moz.com", "/public")
+        self.assertEquals(authenticated_userid(req), "test@moz.com")
+        self.assertEquals(authenticated_userid(req), "test@moz.com")
