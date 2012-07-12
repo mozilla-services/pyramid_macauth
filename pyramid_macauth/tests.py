@@ -138,10 +138,10 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
     def test_from_settings_passes_on_args_to_nonce_cache(self):
         policy = MACAuthenticationPolicy.from_settings({
           "macauth.nonce_cache": "macauthlib:NonceCache",
-          "macauth.nonce_cache_nonce_timeout": 42,
+          "macauth.nonce_cache_nonce_ttl": 42,
         })
         self.assertTrue(isinstance(policy.nonce_cache, macauthlib.NonceCache))
-        self.assertEquals(policy.nonce_cache.nonce_timeout, 42)
+        self.assertEquals(policy.nonce_cache.nonce_ttl, 42)
         self.assertRaises(TypeError, MACAuthenticationPolicy.from_settings, {
           "macauth.nonce_cache": "macauthlib:NonceCache",
           "macauth.nonce_cache_invalid_arg": "WHAWHAWHAWHA",

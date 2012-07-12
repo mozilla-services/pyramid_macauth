@@ -10,10 +10,10 @@ with open(os.path.join(here, 'README.rst')) as f:
 with open(os.path.join(here, 'CHANGES.txt')) as f:
     CHANGES = f.read()
 
-requires = ['pyramid >= 1.3', 'macauthlib', 'tokenlib', 'webtest']
+requires = ['pyramid >= 1.3', 'macauthlib >= 0.3.0', 'tokenlib', 'webtest']
 
 setup(name='pyramid_macauth',
-      version='0.1.0',
+      version='0.1.1',
       description='pyramid_macauth',
       long_description=README + '\n\n' + CHANGES,
       license='MPLv2.0',
