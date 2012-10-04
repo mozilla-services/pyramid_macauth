@@ -46,8 +46,14 @@ class MACAuthenticationPolicy(object):
                         returning a list of the groups that userid is a
                         member of.
 
+        * master_secret:  a secret known only by the server, used for signing
+                          MAC auth tokens in the default implementation.
+
         * decode_mac_id:  a callable taking a Request object and MAC token id,
                           and returning the userid and MAC secret key.
+
+        * encode_mac_id:  a callable taking a Request object and userid, and
+                          returning the MAC token id and secret key.
 
         * nonce_cache:  an object implementing the same interface as
                         macauthlib.NonceCache.
@@ -56,15 +62,24 @@ class MACAuthenticationPolicy(object):
 
     implements(IAuthenticationPolicy)
 
-    def __init__(self, find_groups=None, decode_mac_id=None, nonce_cache=None):
+    # The default value of master_secret is None, which will cause tokenlib
+    # to generate a fresh secret at application startup.
+    master_secret = None
+
+    def __init__(self, find_groups=None, master_secret=None, nonce_cache=None,
+                 decode_mac_id=None, encode_mac_id=None):
         if find_groups is not None:
             self.find_groups = find_groups
-        if decode_mac_id is not None:
-            self.decode_mac_id = decode_mac_id
+        if master_secret is not None:
+            self.master_secret = master_secret
         if nonce_cache is not None:
             self.nonce_cache = nonce_cache
         else:
             self.nonce_cache = macauthlib.NonceCache()
+        if decode_mac_id is not None:
+            self.decode_mac_id = decode_mac_id
+        if encode_mac_id is not None:
+            self.encode_mac_id = encode_mac_id
 
     @classmethod
     def from_settings(cls, settings={}, prefix="macauth.", **extra):
@@ -107,8 +122,10 @@ class MACAuthenticationPolicy(object):
         load_object = _load_object_from_settings
         kwds = {}
         kwds["find_groups"] = load_function("find_groups", settings)
-        kwds["decode_mac_id"] = load_function("decode_mac_id", settings)
+        kwds["master_secret"] = settings.pop("master_secret", None)
         kwds["nonce_cache"] = load_object("nonce_cache", settings)
+        kwds["decode_mac_id"] = load_function("decode_mac_id", settings)
+        kwds["encode_mac_id"] = load_function("encode_mac_id", settings)
         return kwds
 
     def authenticated_userid(self, request):
@@ -203,8 +220,8 @@ class MACAuthenticationPolicy(object):
 
         If the MAC token id is invalid then ValueError will be raised.
         """
-        secret = tokenlib.get_token_secret(tokenid)
-        data = tokenlib.parse_token(tokenid)
+        secret = tokenlib.get_token_secret(tokenid, secret=self.master_secret)
+        data = tokenlib.parse_token(tokenid, secret=self.master_secret)
         userid = None
         for key in ("username", "userid", "uid", "email"):
             userid = data.get(key)
@@ -214,6 +231,20 @@ class MACAuthenticationPolicy(object):
             msg = "MAC id contains no userid"
             raise self.challenge(request, msg)
         return userid, secret
+
+    def encode_mac_id(self, request, userid=None, **data):
+        """Encode the given userid into a MACAuth token id and secret key.
+
+        This method is essentially the reverse of decode_mac_id.  Given
+        a userid, it returns a MACAuth id and corresponding secret key.
+        It is not needed for consuming authentication tokens, but is very
+        useful when building them for testing purposes.
+        """
+        if userid is not None:
+            data["userid"] = userid
+        tokenid = tokenlib.make_token(data, secret=self.master_secret)
+        secret = tokenlib.get_token_secret(tokenid, secret=self.master_secret)
+        return tokenid, secret
 
     def _get_params(self, request):
         """Get the MACAuth parameters from the given request.

@@ -22,7 +22,6 @@ from pyramid.security import (unauthenticated_userid,
                               Authenticated)
 
 import macauthlib
-import tokenlib
 
 from pyramid_macauth import MACAuthenticationPolicy
 
@@ -30,7 +29,7 @@ from pyramid_macauth import MACAuthenticationPolicy
 def make_request(config, path="/", environ={}):
     """Helper function for making pyramid Request objects."""
     my_environ = {}
-    my_environ["wsgi.version"] = (1,0)
+    my_environ["wsgi.version"] = (1, 0)
     my_environ["wsgi.multithread"] = True
     my_environ["wsgi.multiprocess"] = True
     my_environ["wsgi.run_once"] = False
@@ -91,6 +90,11 @@ def stub_decode_mac_id(request, id, suffix="-SECRET"):
     return id, id + suffix
 
 
+def stub_encode_mac_id(request, id, suffix="-SECRET"):
+    """Stub mac-id-encoding function that appends suffix to give the secret."""
+    return id, id + suffix
+
+
 class TestMACAuthenticationPolicy(unittest.TestCase):
     """Testcases for the MACAuthenticationPolicy class."""
 
@@ -112,14 +116,13 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
         return make_request(self.config, *args, **kwds)
 
     def _make_signed_request(self, userid, *args, **kwds):
-        creds = self._get_credentials(userid=userid)
         req = self._make_request(*args, **kwds)
+        creds = self._get_credentials(req, userid=userid)
         macauthlib.sign_request(req, **creds)
         return req
 
-    def _get_credentials(self, **data):
-        id = tokenlib.make_token(data)
-        key = tokenlib.get_token_secret(id)
+    def _get_credentials(self, req, **data):
+        id, key = self.policy.encode_mac_id(req, **data)
         return {"id": id, "key": key}
 
     def test_the_class_implements_auth_policy_interface(self):
@@ -128,12 +131,16 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
     def test_from_settings_can_explicitly_set_all_properties(self):
         policy = MACAuthenticationPolicy.from_settings({
           "macauth.find_groups": "pyramid_macauth.tests:stub_find_groups",
-          "macauth.decode_mac_id": "pyramid_macauth.tests:stub_decode_mac_id",
+          "macauth.master_secret": "V8 JUICE IS 1/8TH GASOLINE",
           "macauth.nonce_cache": "macauthlib:NonceCache",
+          "macauth.decode_mac_id": "pyramid_macauth.tests:stub_decode_mac_id",
+          "macauth.encode_mac_id": "pyramid_macauth.tests:stub_encode_mac_id",
         })
         self.assertEquals(policy.find_groups, stub_find_groups)
-        self.assertEquals(policy.decode_mac_id, stub_decode_mac_id)
+        self.assertEquals(policy.master_secret, "V8 JUICE IS 1/8TH GASOLINE")
         self.assertTrue(isinstance(policy.nonce_cache, macauthlib.NonceCache))
+        self.assertEquals(policy.decode_mac_id, stub_decode_mac_id)
+        self.assertEquals(policy.encode_mac_id, stub_encode_mac_id)
 
     def test_from_settings_passes_on_args_to_nonce_cache(self):
         policy = MACAuthenticationPolicy.from_settings({
@@ -163,6 +170,11 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
           "macauth.decode_mac_id": "pyramid_macauth.tests:stub_non_callable",
         })
 
+    def test_from_settings_errors_out_if_encode_mac_id_is_not_callable(self):
+        self.assertRaises(ValueError, MACAuthenticationPolicy.from_settings, {
+          "macauth.encode_mac_id": "pyramid_macauth.tests:stub_non_callable",
+        })
+
     def test_from_settings_produces_sensible_defaults(self):
         policy = MACAuthenticationPolicy.from_settings({})
         self.assertEquals(policy.find_groups.im_func,
@@ -177,6 +189,13 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
           "macauth.decode_mac_id_suffix": "-TEST",
         })
         self.assertEquals(policy.decode_mac_id(None, "id"), ("id", "id-TEST"))
+
+    def test_from_settings_curries_args_to_encode_mac_id(self):
+        policy = MACAuthenticationPolicy.from_settings({
+          "macauth.encode_mac_id": "pyramid_macauth.tests:stub_encode_mac_id",
+          "macauth.encode_mac_id_suffix": "-TEST",
+        })
+        self.assertEquals(policy.encode_mac_id(None, "id"), ("id", "id-TEST"))
 
     def test_remember_does_nothing(self):
         policy = MACAuthenticationPolicy()
@@ -202,8 +221,8 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
         self.assertEquals(r.body, "test@moz.com")
 
     def test_authentication_fails_when_macid_has_no_userid(self):
-        creds = self._get_credentials(hello="world")
         req = self._make_request("/auth")
+        creds = self._get_credentials(req, hello="world")
         macauthlib.sign_request(req, **creds)
         self.app.request(req, status=401)
 
@@ -237,8 +256,8 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
         self.app.request(req, status=401)
 
     def test_authentication_with_expired_timestamp_fails(self):
-        creds = self._get_credentials(username="test@moz.com")
         req = self._make_request("/auth")
+        creds = self._get_credentials(req, username="test@moz.com")
         # Do an initial request so that the server can
         # calculate and cache our clock skew.
         ts = str(int(time.time()))
@@ -252,8 +271,8 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
         self.app.request(req, status=401)
 
     def test_authentication_with_far_future_timestamp_fails(self):
-        creds = self._get_credentials(username="test@moz.com")
         req = self._make_request("/auth")
+        creds = self._get_credentials(req, username="test@moz.com")
         # Do an initial request so that the server can
         # calculate and cache our clock skew.
         ts = str(int(time.time()))
@@ -267,9 +286,9 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
         self.app.request(req, status=401)
 
     def test_authentication_with_reused_nonce_fails(self):
-        creds = self._get_credentials(username="test@moz.com")
-        # First request with that nonce should succeed.
         req = self._make_request("/auth")
+        creds = self._get_credentials(req, username="test@moz.com")
+        # First request with that nonce should succeed.
         req.authorization = ("MAC", {"nonce": "PEPPER"})
         macauthlib.sign_request(req, **creds)
         r = self.app.request(req)
@@ -289,8 +308,8 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
         self.app.request(req, status=401)
 
     def test_authentication_with_busted_signature_fails(self):
-        creds = self._get_credentials(username="test@moz.com")
         req = self._make_request("/auth")
+        creds = self._get_credentials(req, username="test@moz.com")
         macauthlib.sign_request(req, **creds)
         signature = macauthlib.utils.parse_authz_header(req)["mac"]
         authz = req.environ["HTTP_AUTHORIZATION"]

@@ -1,3 +1,11 @@
+0.2.0 - XXXX-XX-XX
+==================
+
+ * Add encode_mac_id() method as a dual of decode_mac_id().
+ * Add "macauth.master_secret" setting to specify the secret used
+   when encoding/decoding MAC Auth tokens.
+
+
 0.1.1 - 2012-07-11
 ==================
 
