@@ -1,4 +1,4 @@
-0.2.0 - XXXX-XX-XX
+0.2.0 - 2012-10-04
 ==================
 
  * Add encode_mac_id() method as a dual of decode_mac_id().
