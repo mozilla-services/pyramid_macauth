@@ -19,7 +19,7 @@ __version__ = "%d.%d.%d%s" % __ver_tuple__
 
 import functools
 
-from zope.interface import implements
+from zope.interface import implementer
 
 from pyramid.interfaces import IAuthenticationPolicy
 from pyramid.security import Everyone, Authenticated
@@ -33,6 +33,7 @@ import macauthlib
 import macauthlib.utils
 
 
+@implementer(IAuthenticationPolicy)
 class MACAuthenticationPolicy(object):
     """Pyramid Authentication Policy implementing MAC Access Auth.
 
@@ -59,8 +60,6 @@ class MACAuthenticationPolicy(object):
                         macauthlib.NonceCache.
 
     """
-
-    implements(IAuthenticationPolicy)
 
     # The default value of master_secret is None, which will cause tokenlib
     # to generate a fresh secret at application startup.
@@ -92,10 +91,10 @@ class MACAuthenticationPolicy(object):
         """
         # Grab out all the settings keys that start with our prefix.
         macauth_settings = {}
-        for name, value in settings.iteritems():
+        for name in settings:
             if not name.startswith(prefix):
                 continue
-            macauth_settings[name[len(prefix):]] = value
+            macauth_settings[name[len(prefix):]] = settings[name]
         # Update with any additional keyword arguments.
         macauth_settings.update(extra)
         # Pull out the expected keyword arguments.
@@ -340,7 +339,7 @@ def _load_function_from_settings(name, settings):
     # Curry in any keyword arguments.
     func_kwds = {}
     prefix = name + "_"
-    for key in settings.keys():
+    for key in list(settings.keys()):
         if key.startswith(prefix):
             func_kwds[key[len(prefix):]] = settings.pop(key)
     # Return the original function if not currying anything.
@@ -366,7 +365,7 @@ def _load_object_from_settings(name, settings):
     # Extract any arguments for the callable.
     obj_kwds = {}
     prefix = name + "_"
-    for key in settings.keys():
+    for key in list(settings.keys()):
         if key.startswith(prefix):
             obj_kwds[key[len(prefix):]] = settings.pop(key)
     # Call it if callable.

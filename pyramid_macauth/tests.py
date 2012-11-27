@@ -82,7 +82,7 @@ def stub_view_auth(request):
 def stub_view_groups(request):
     """Stub view that returns groups if logged in, fails if not."""
     groups = effective_principals(request)
-    return Response(json.dumps(map(str, groups)))
+    return Response(json.dumps([str(g) for g in groups]))
 
 
 def stub_decode_mac_id(request, id, suffix="-SECRET"):
@@ -177,10 +177,12 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
 
     def test_from_settings_produces_sensible_defaults(self):
         policy = MACAuthenticationPolicy.from_settings({})
-        self.assertEquals(policy.find_groups.im_func,
-                          MACAuthenticationPolicy.find_groups.im_func)
-        self.assertEquals(policy.decode_mac_id.im_func,
-                          MACAuthenticationPolicy.decode_mac_id.im_func)
+        # Using __code__ here is a Py2/Py3 compatible way of checking
+        # that a bound and unbound method point to the same function object.
+        self.assertEquals(policy.find_groups.__code__,
+                          MACAuthenticationPolicy.find_groups.__code__)
+        self.assertEquals(policy.decode_mac_id.__code__,
+                          MACAuthenticationPolicy.decode_mac_id.__code__)
         self.assertTrue(isinstance(policy.nonce_cache, macauthlib.NonceCache))
 
     def test_from_settings_curries_args_to_decode_mac_id(self):
@@ -218,7 +220,7 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
     def test_authenticated_request_works(self):
         req = self._make_signed_request("test@moz.com", "/auth")
         r = self.app.request(req)
-        self.assertEquals(r.body, "test@moz.com")
+        self.assertEquals(r.body, b"test@moz.com")
 
     def test_authentication_fails_when_macid_has_no_userid(self):
         req = self._make_request("/auth")
@@ -292,7 +294,7 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
         req.authorization = ("MAC", {"nonce": "PEPPER"})
         macauthlib.sign_request(req, **creds)
         r = self.app.request(req)
-        self.assertEquals(r.body, "test@moz.com")
+        self.assertEquals(r.body, b"test@moz.com")
         # Second request with that nonce should fail.
         req = self._make_request("/auth")
         req.authorization = ("MAC", {"nonce": "PEPPER"})
@@ -322,7 +324,7 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
         r = self.app.request(req, status=401)
         req = self._make_signed_request("baduser", "/public")
         r = self.app.request(req, status=200)
-        self.assertEquals(r.body, "baduser")
+        self.assertEquals(r.body, b"baduser")
 
     def test_groupfinder_gruops_are_correctly_reported(self):
         req = self._make_request("/groups")
@@ -346,11 +348,11 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
         # Request with no credentials is allowed access.
         req = self._make_request("/public")
         resp = self.app.request(req)
-        self.assertEquals(resp.body, "None")
+        self.assertEquals(resp.body, b"None")
         # Request with valid credentials is allowed access.
         req = self._make_signed_request("test@moz.com", "/public")
         resp = self.app.request(req)
-        self.assertEquals(resp.body, "test@moz.com")
+        self.assertEquals(resp.body, b"test@moz.com")
         # Request with invalid credentials still reports a userid.
         req = self._make_signed_request("test@moz.com", "/public")
         signature = macauthlib.utils.parse_authz_header(req)["mac"]
@@ -358,7 +360,7 @@ class TestMACAuthenticationPolicy(unittest.TestCase):
         authz = authz.replace(signature, "XXX" + signature)
         req.environ["HTTP_AUTHORIZATION"] = authz
         resp = self.app.request(req)
-        self.assertEquals(resp.body, "test@moz.com")
+        self.assertEquals(resp.body, b"test@moz.com")
         # Request with malformed credentials gets a 401
         req = self._make_signed_request("test@moz.com", "/public")
         tokenid = macauthlib.utils.parse_authz_header(req)["id"]
