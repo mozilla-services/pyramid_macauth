@@ -13,7 +13,7 @@ with open(os.path.join(here, 'CHANGES.txt')) as f:
 requires = ['pyramid >= 1.3', 'macauthlib >= 0.3.0', 'tokenlib', 'webtest']
 
 setup(name='pyramid_macauth',
-      version='0.2.1',
+      version='0.3.0',
       description='pyramid_macauth',
       long_description=README + '\n\n' + CHANGES,
       license='MPLv2.0',
